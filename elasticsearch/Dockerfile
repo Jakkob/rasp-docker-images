@@ -17,6 +17,9 @@ RUN rm -rf /tmp/* \
 # Install the `elasticsearch.yml` config file
 COPY elasticsearch.yml /etc/elasticsearch/config/
 
+# Add Elasticsearch executables to the PATH
+ENV PATH /usr/share/elasticsearch/bin:$PATH
+
 # Export HTTP & Transport
 EXPOSE 9200 9300
 
