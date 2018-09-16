@@ -21,9 +21,9 @@ COPY elasticsearch.yml /etc/elasticsearch/config/
 EXPOSE 9200 9300
 
 # Configure ENTRYPOINT
-COPY docker-entrypoint.sh /
-RUN chmod +x /docker-entrypoint.sh
-ENTRYPOINT ["/docker-entrypoint.sh"]
+# COPY docker-entrypoint.sh /
+# RUN chmod +x /docker-entrypoint.sh
+ENTRYPOINT []
 
 # Run it!
 CMD [ "elasticsearch" ]
