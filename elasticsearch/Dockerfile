@@ -3,54 +3,74 @@ FROM resin/rpi-raspbian:latest
 # Update and install Java
 RUN apt-get update && apt-get install openjdk-8-jre
 
-ENV ES_VERSION "6.4.0"
+EXPOSE 9200 9300
 
-ENV BASE_URI "https://artifacts.elastic.co/downloads/elasticsearch/"
-ENV PKG_URI "${BASE_URI}elasticsearch-${ES_VERSION}.deb"
-ENV SHA_URI "${BASE_URI}elasticsearch-${ES_VERSION}.deb.sha512"
+ENV ES_VERSION 6.3.0
 
-# Download Elasticsearch artifacts
-RUN cd /tmp \
-  && curl -o "elasticsearch-${ES_VERSION}.deb" -Lskj "${PKG_URI}" \
-  && curl -o "elasticsearch-${ES_VERSION}.deb.sha512" -Lskj "${SHA_URI}" \
-  && sha512sum -c "elasticsearch-${ES_VERSION}.deb.sha512"
-
-RUN echo "Shoop!"
+ENV DOWNLOAD_URL "https://artifacts.elastic.co/downloads/elasticsearch"
+ENV ES_TARBAL "${DOWNLOAD_URL}/elasticsearch-${ES_VERSION}.tar.gz"
+ENV ES_TARBALL_ASC "${DOWNLOAD_URL}/elasticsearch-${ES_VERSION}.tar.gz.asc"
+ENV GPG_KEY "46095ACC8548582C1A2699A9D27D666CD88E42B4"
 
 # Install Elasticsearch.
-RUN dpkg -i "/tmp/elasticsearch-${ES_VERSION}.deb"
-
-# Cleanup the apt-get cache
-RUN rm -rf /tmp/* \
+RUN apt-get update -q \
+  &&  apt-get install -q -y --no-install-recommends ca-certificates curl unzip gosu util-linux gnupg openssl uuid-runtime \
+  && cd /tmp \
+  && echo "===> Install Elasticsearch..." \
+  && curl -o elasticsearch.tar.gz -Lskj "$ES_TARBAL"; \
+	if [ "$ES_TARBALL_ASC" ]; then \
+		curl -o elasticsearch.tar.gz.asc -Lskj "$ES_TARBALL_ASC"; \
+		export GNUPGHOME="$(mktemp -d)"; \
+		gpg --keyserver ha.pool.sks-keyservers.net --recv-keys "$GPG_KEY"; \
+		gpg --batch --verify elasticsearch.tar.gz.asc elasticsearch.tar.gz; \
+		rm -r "$GNUPGHOME" elasticsearch.tar.gz.asc; \
+	fi; \
+  tar -xf elasticsearch.tar.gz \
+  && ls -lah \
+  && mv elasticsearch-$ES_VERSION /elasticsearch \
+  && adduser --no-create-home --disabled-password --shell /sbin/nologin elasticsearch \
+  && echo "===> Creating Elasticsearch Paths..." \
+  && for path in \
+  	/elasticsearch/config \
+  	/elasticsearch/config/scripts \
+  	/elasticsearch/plugins \
+  ; do \
+  mkdir -p "$path"; \
+  chown -R elasticsearch:elasticsearch "$path"; \
+  done \
+  && rm -rf /tmp/* \
   && apt-get autoremove --purge -y && \
   apt-get clean && \
   rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
-# Install the `elasticsearch.yml` config file
-# COPY elasticsearch.yml /etc/elasticsearch/config/
+ENV PATH /elasticsearch/bin:$PATH
 
-# Add Elasticsearch executables to the PATH
-ENV PATH /usr/share/elasticsearch/bin:$PATH
+WORKDIR /elasticsearch
 
-# Export HTTP & Transport
-EXPOSE 9200 9300
+# Copy configuration
+COPY config /elasticsearch/config
 
-# Define volumes
-VOLUME /var/lib/elasticsearch/data
-VOLUME /var/log/elasticsearch
+# Copy run script
+COPY run.sh /
 
-# Override ENTRYPOINT
-ENTRYPOINT []
-
-# Set necesary ENV vars
+# Set environment variables defaults
 ENV ES_JAVA_OPTS "-Xms512m -Xmx512m"
+ENV CLUSTER_NAME elasticsearch-default
 ENV NODE_MASTER true
 ENV NODE_DATA true
 ENV NODE_INGEST true
-ENV NUMBER_OF_MASTERS 1
 ENV HTTP_ENABLE true
+ENV NETWORK_HOST _site_
+ENV HTTP_CORS_ENABLE true
+ENV HTTP_CORS_ALLOW_ORIGIN *
+ENV NUMBER_OF_MASTERS 1
+ENV MAX_LOCAL_STORAGE_NODES 1
+ENV SHARD_ALLOCATION_AWARENESS ""
+ENV SHARD_ALLOCATION_AWARENESS_ATTR ""
+ENV MEMORY_LOCK true
+ENV REPO_LOCATIONS []
 
-USER elasticsearch
+# Volume for Elasticsearch data
+VOLUME ["/data"]
 
-# Run it!
-CMD "elasticsearch"
+CMD ["/run.sh"]
